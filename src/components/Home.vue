@@ -6,9 +6,6 @@
      </div>
      <div class="input-group mb-2">
        <input class="form-control" v-model="faucetValue" v-bind:class="{ 'is-invalid' : isInvalidValue }" type="text" placeholder="Social Network URL containing your withdrawal tweet">
-       <div class="invalid-tooltip">
-         {{errorMsg}}  
-       </div>
 
        <button v-if="!isProcessing" class="btn btn-primary" v-on:click="submit()" v-bind:disabled="recaptchaToken == ''">Give Me Gas!</button>
        <button v-if="isProcessing" class="btn btn-primary" type="button" disabled>
@@ -16,11 +13,16 @@
          Sending...
        </button>
      </div>
+     <p>現在のFaucet残高 : {{faucetBalance}} Matic <small v-if="isBalanceShort" class="text-danger">残高が少ないです、、、</small></p>
+
      <div v-if="isSuccess" class="alert alert-success  p-1" role="alert">
        Success!!  <a v-bind:href="explorerUrl" style="max-width:200px"  target="_blank" rel="noopener noreferrer">{{txHash}}</a>
      </div>
+      <div v-if="isInvalidValue" class="alert alert-danger  p-1" role="alert">
+       {{errorMsg}} 
+     </div>
 
-      
+     
      <hr> 
      <div class="text-start mb-5">
        <h2>How does this work?</h2>
@@ -51,14 +53,16 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import axios from 'axios'
+import Web3 from 'web3'
 const blockExplorers = "https://polygonscan.com/tx/";
 
+let web3: Web3;
 export default defineComponent({
   name: 'Home',
   data() {
      return {
        debug:false,
-       faucetBalance:0,
+       faucetBalance: 0,
        recaptchaToken:'',
        faucetValue:'',
        faucetAddress:  '',
@@ -67,6 +71,7 @@ export default defineComponent({
        explorerUrl : '',
        txHash : '',
        isSuccess : false,
+       isBalanceShort : false,
        isProcessing : false,
      }
   },
@@ -78,9 +83,16 @@ export default defineComponent({
           this.errorMsg = 'ツイートのURLを貼り付けてください!';
           return;
         }
+
+        if(this.isBalanceShort) {
+          this.isInvalidValue = true;
+          this.errorMsg = '現在残高が十分にないため、機能停止中です'
+          return;
+        }
+
         this.isProcessing = true;
         this.isInvalidValue = false;
-        const result = await axios.post(process.env.VUE_APP_DOMAIN, 
+        const result = await axios.post(process.env.VUE_APP_DOMAIN as string, 
           {
             token : this.recaptchaToken as string,
             tweet : this.faucetValue as string
@@ -114,7 +126,13 @@ export default defineComponent({
     }
   },
   async created() {
-    this.faucetAddress = process.env.VUE_APP_DEPOSIT_ADDRESS   
+    web3 = new Web3(process.env.VUE_APP_PROVIDER as string);
+    this.faucetAddress = process.env.VUE_APP_DEPOSIT_ADDRESS as string
+    let tmpBalance = web3.utils.fromWei(await web3.eth.getBalance(this.faucetAddress));
+    this.faucetBalance = Math.floor(parseFloat(tmpBalance) * 100) / 100;
+    if(this.faucetBalance < 0.1) {
+      this.isBalanceShort = true;
+    }
   },
   mounted() {
     let externalScript = document.createElement('script')
