@@ -9,6 +9,7 @@
     "deploy": "firebase deploy --only hosting"
   },
   "dependencies": {
+    "@types/grecaptcha": "^3.0.4",
     "axios": "^0.26.1",
     "core-js": "^3.6.5",
     "vue": "^3.0.0"

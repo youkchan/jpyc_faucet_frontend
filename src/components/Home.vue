@@ -4,41 +4,54 @@
      <div class="mb-5" style="margin-top:100px">
        <h1>JPYC Faucet for Tip bot</h1>
      </div>
-     <div class="input-group mb-5">
+     <div class="input-group mb-2">
        <input class="form-control" v-model="faucetValue" v-bind:class="{ 'is-invalid' : isInvalidValue }" type="text" placeholder="Social Network URL containing your withdrawal tweet">
        <div class="invalid-tooltip">
          {{errorMsg}}  
        </div>
 
-       <button class="btn btn-secondary" v-on:click="submit()">Give Me Gas!</button>
+       <button v-if="!isProcessing" class="btn btn-primary" v-on:click="submit()" v-bind:disabled="recaptchaToken == ''">Give Me Gas!</button>
+       <button v-if="isProcessing" class="btn btn-primary" type="button" disabled>
+         <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+         Sending...
+       </button>
+     </div>
+     <div v-if="isSuccess" class="alert alert-success  p-1" role="alert">
+       Success!!  <a v-bind:href="explorerUrl" style="max-width:200px"  target="_blank" rel="noopener noreferrer">{{txHash}}</a>
      </div>
 
-     <div class="text-start">
-     <h2>How does this work?</h2>
-     <p>This faucet allows users who perform certain actions to obtain gas tokens for the blockchain.</p>
-     
-     <p>It is currently available to users of the JPYC Tip Bot.</p>
-     <p>To request funds via Twitter, make a tweet for a JPYC Tip Bot withdrawal request.(Only tweets of approved requests are valid.)
-     Copy-paste the tweets URL into the above input box and fire away!The faucet is running invisible reCaptcha protection against bots.</p>
-     <h3>Donate and Contribute</h3>
+      
+     <hr> 
+     <div class="text-start mb-5">
+       <h2>How does this work?</h2>
+       <p>このFaucetは、ユーザーが特定のアクションを行うことで、ブロックチェーン用のガストークンを入手することができます。</p>
+       <p>現在、JPYC Tip Botの利用者が利用可能です。</p>
+       <p>JPYC Tip Botの出金依頼をツイートしてください（承認された依頼のツイートのみ有効です）。下記画像のようなツイートのURLを上記の入力ボックスにコピーペーストして送信してください！</p>
 
-     <p>This faucet can be contributed not only through direct donations, but also through projects registered with Public Property DAO.</p>
+       <div class="mb-2 text-center">
+         <img src="@/assets/tipbot_tweet.png"  style="max-width:400px">
+       </div>
+       <p>このFaucetはボットに対する見えないreCaptcha保護機能を実行しています。</p>
+       <p>[注意]</p>
+       <p><small class="text-danger">すでにMaticトークンを持っているアドレスは付与対象外になります</small></p>
+       <p><small class="text-danger">同じTwitterアカウントで複数回利用はできません(現時点)</small></p>
+       <p><small class="text-danger">30日以内のツイートが対象です</small></p>
+       <h3>Donate and Contribute</h3>
+       <p>To donate directly, please send Matic tokens to the following address (currently Polygon network only)</p>
+       <div class="col-8 col-offset-2 p-2 text-center" style="border-style:solid;">
+         <span>{{ faucetAddress }}<img v-on:click="addressCopy()" src="@/assets/clipboard_icon.png" > </span>
+       </div>
 
-     <p>To donate directly, please send Matic tokens to the following address (currently Polygon network only)</p>
-     <div class="col-8 col-offset-2" style="border-style:solid">
-       <p>{{ faucetAddress }}<img v-on:click="addressCopy()" src="@/assets/clipboard_icon.png" > </p>
      </div>
-
-
-     <p>Click here for the project registered with Public Property DAO.</p>
     </div>
-    </div>
+
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
 import axios from 'axios'
+const blockExplorers = "https://polygonscan.com/tx/";
 
 export default defineComponent({
   name: 'Home',
@@ -46,10 +59,15 @@ export default defineComponent({
      return {
        debug:false,
        faucetBalance:0,
+       recaptchaToken:'',
        faucetValue:'',
        faucetAddress:  '',
        errorMsg:'Invalid Request!',
        isInvalidValue : false,
+       explorerUrl : '',
+       txHash : '',
+       isSuccess : false,
+       isProcessing : false,
      }
   },
   methods: {
@@ -57,12 +75,14 @@ export default defineComponent({
       try {
         if(this.faucetValue == '' || this.faucetValue.match(/(http[s]?):\/\/[^/.]+?\..+\w$/i) == null ) {
           this.isInvalidValue = true;
-          this.errorMsg = 'Input URL!';
+          this.errorMsg = 'ツイートのURLを貼り付けてください!';
           return;
         }
+        this.isProcessing = true;
         this.isInvalidValue = false;
         const result = await axios.post(process.env.VUE_APP_DOMAIN, 
           {
+            token : this.recaptchaToken as string,
             tweet : this.faucetValue as string
           }
         );
@@ -70,12 +90,20 @@ export default defineComponent({
         if(data.status == "error" ) {
           this.isInvalidValue = true;
           this.errorMsg = data.message;
+          this.isProcessing = false;
           return;
         }
+
+        this.explorerUrl = blockExplorers + data.txId;
+        this.txHash = data.txId;
+        this.isSuccess = true;
+        this.isProcessing = false;
         
       } catch (err: any){
-          this.errorMsg = 'Invalid Request!';
-          this.isInvalidValue = true;
+        console.log(err);
+        this.errorMsg = '不正なリクエストです!';
+        this.isInvalidValue = true;
+        this.isProcessing = false;
         /* no execution*/
       }
     },
@@ -87,6 +115,21 @@ export default defineComponent({
   },
   async created() {
     this.faucetAddress = process.env.VUE_APP_DEPOSIT_ADDRESS   
+  },
+  mounted() {
+    let externalScript = document.createElement('script')
+    externalScript.async = true
+    externalScript.onload = () => {
+      (window as any).grecaptcha.ready(() => {
+        (window as any).grecaptcha.execute(process.env.VUE_APP_SITEKEY, {action: 'submit'}).then( async (token: any) =>
+          {
+            this.recaptchaToken = token;
+          });
+        });
+    }
+    externalScript.setAttribute('src', "https://www.google.com/recaptcha/api.js?render=" + process.env.VUE_APP_SITEKEY); 
+    document.head.appendChild(externalScript);
+  
   }
 
 });
